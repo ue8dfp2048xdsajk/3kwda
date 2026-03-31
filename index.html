@@ -583,6 +583,9 @@ Copy and paste your keyword data below. The format should be three lines per key
 <br>2. Monthly searches (can include k/M suffixes like "70" or "669.9k")
 <br>3. Number of results (can include k/M suffixes like "8.7k" or "4.6M")
 </p>
+<div style="display: flex; gap: 12px; margin-bottom: 12px;">
+<button id="pasteBtn" class="process-btn" style="width: auto; flex: 0 0 auto; padding: 12px 24px; margin-top: 0;">Paste from Clipboard</button>
+</div>
 <textarea id="pasteArea" class="paste-area" placeholder="digital asset
 70
 669.9k
@@ -658,6 +661,30 @@ digital planner pages
 
 <script>
 
+/* DISABLE RIGHT CLICK */
+document.addEventListener("contextmenu", e => e.preventDefault());
+
+/* DISABLE DEVTOOLS SHORTCUTS */
+document.onkeydown=function(e){
+if(
+e.keyCode===123 ||
+(e.ctrlKey && e.shiftKey && e.keyCode===73) ||
+(e.ctrlKey && e.shiftKey && e.keyCode===74) ||
+(e.ctrlKey && e.shiftKey && e.keyCode===67) ||
+(e.ctrlKey && e.keyCode===85) ||
+(e.ctrlKey && e.keyCode===83)
+){
+return false;
+}
+};
+
+/* BLOCK BULK COPYING */
+document.addEventListener("copy", function(e){
+if(!window.allowCopy){
+e.preventDefault();
+}
+});
+
 let tableData=[]
 let currentData=[]
 let sortDir={}
@@ -702,7 +729,7 @@ errorDiv.classList.add("active")
 return
 }
 
-tableData=[]
+const tempData=[]
 
 for(let i=0;i<lines.length;i+=3){
 const keyword=lines[i]
@@ -711,7 +738,7 @@ const results=parseNumber(lines[i+2])
 
 if(searches>0 && results>0){
 const ratio=searches/results
-tableData.push({
+tempData.push({
 keyword:keyword,
 searches:searches,
 results:results,
@@ -720,11 +747,21 @@ ratio:parseFloat(ratio.toFixed(4))
 }
 }
 
-if(tableData.length===0){
+if(tempData.length===0){
 errorDiv.textContent="No valid keywords found. Please check your data format."
 errorDiv.classList.add("active")
 return
 }
+
+const keywordMap=new Map()
+tempData.forEach(row=>{
+const key=row.keyword.toLowerCase()
+if(!keywordMap.has(key)){
+keywordMap.set(key,row)
+}
+})
+
+tableData=Array.from(keywordMap.values())
 
 currentData=[...tableData]
 currentPage=1
@@ -822,8 +859,10 @@ renderTable()
 
 function copyKeyword(text){
 
+window.allowCopy = true;
+
 navigator.clipboard.writeText(text).then(()=>{
-console.log('Copied: '+text)
+window.allowCopy = false;
 });
 
 }
@@ -899,6 +938,20 @@ icon.textContent=sortDir[currentSortCol]?"↑":"↓"
 }
 
 document.getElementById("processBtn").addEventListener("click",processData)
+
+document.getElementById("pasteBtn").addEventListener("click",async function(){
+try{
+const text=await navigator.clipboard.readText()
+document.getElementById("pasteArea").value=text
+}catch(err){
+const errorDiv=document.getElementById("errorMessage")
+errorDiv.textContent="Unable to access clipboard. Please paste manually using Ctrl+V or Cmd+V."
+errorDiv.classList.add("active")
+setTimeout(()=>{
+errorDiv.classList.remove("active")
+},3000)
+}
+})
 
 document.querySelectorAll("#minSearch,#maxResults,#minRatio,#keywordFilter")
 .forEach(el=>el.addEventListener("input",debouncedFilter))
