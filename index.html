@@ -583,9 +583,13 @@ Copy and paste your keyword data below. The format should be three lines per key
 <br>2. Monthly searches (can include k/M suffixes like "70" or "669.9k")
 <br>3. Number of results (can include k/M suffixes like "8.7k" or "4.6M")
 </p>
-<div style="display: flex; gap: 12px; margin-bottom: 12px;">
-<button id="pasteBtn" class="process-btn" style="width: auto; flex: 0 0 auto; padding: 12px 24px; margin-top: 0;">Paste from Clipboard</button>
-</div>
+<div style="display: flex; gap: 12px; margin-bottom: 12px; flex-wrap: wrap;">
+<button id="pasteBtn" class="process-btn" style="width: auto; padding: 12px 24px; margin-top: 0;">Paste from Clipboard</button>
+<button onclick="downloadProgress()" class="process-btn" style="width:auto; padding: 12px 24px; margin-top: 0;">Download Progress</button>
+<input type="file" id="uploadJson" accept=".json" style="display:none;">
+<button onclick="document.getElementById('uploadJson').click()" class="process-btn" style="width:auto; padding: 12px 24px; margin-top: 0;">Upload Progress</button>
+<button onclick="clearKeywords()" class="process-btn" style="width:auto; padding: 12px 24px; margin-top: 0; background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%); box-shadow: 0 2px 8px rgba(244,67,54,0.3);">Clear Keywords</button>
+
 <textarea id="pasteArea" class="paste-area" placeholder="digital asset
 70
 669.9k
@@ -972,6 +976,139 @@ currentPage=1
 updateSortUI()
 renderTable()
 }
+
+
+function downloadProgress(){
+  const data = {
+    tableData,
+    currentData,
+    filters:{
+      minSearch: document.getElementById("minSearch").value,
+      maxResults: document.getElementById("maxResults").value,
+      minRatio: document.getElementById("minRatio").value,
+      keyword: document.getElementById("keywordFilter").value
+    },
+    sortDir,
+    currentSortCol,
+    currentPage,
+    pasteInput: document.getElementById("pasteArea").value
+  };
+
+  const blob = new Blob([JSON.stringify(data)], {type:"application/json"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "keyword-progress.json";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+document.getElementById("uploadJson").addEventListener("change", function(e){
+  const file = e.target.files[0];
+  if(!file) return;
+
+  const reader = new FileReader();
+  reader.onload = function(event){
+    try{
+      const data = JSON.parse(event.target.result);
+
+      tableData = data.tableData || [];
+      currentData = data.currentData || [];
+
+      document.getElementById("minSearch").value = data.filters?.minSearch || "";
+      document.getElementById("maxResults").value = data.filters?.maxResults || "";
+      document.getElementById("minRatio").value = data.filters?.minRatio || "";
+      document.getElementById("keywordFilter").value = data.filters?.keyword || "";
+
+      sortDir = data.sortDir || {};
+      currentSortCol = data.currentSortCol ?? null;
+      currentPage = data.currentPage || 1;
+
+      document.getElementById("pasteArea").value = data.pasteInput || "";
+
+      document.getElementById("tableSection").classList.add("active");
+
+      updateSortUI();
+      renderTable();
+
+    }catch(err){
+      alert("Invalid JSON file.");
+    }
+  };
+
+  reader.readAsText(file);
+});
+
+
+function clearKeywords(){
+  if(!confirm("Clear all pasted keywords?")) return;
+
+  // Clear textarea
+  document.getElementById("pasteArea").value = "";
+
+  // Clear data arrays
+  tableData = [];
+  currentData = [];
+
+  // Hide table
+  document.getElementById("tableSection").classList.remove("active");
+
+  // Clear localStorage
+  localStorage.removeItem("keywordToolSave");
+}
+
+// AUTO SAVE
+function saveToLocal(){
+  const data = {
+    tableData,
+    currentData,
+    filters:{
+      minSearch: document.getElementById("minSearch").value,
+      maxResults: document.getElementById("maxResults").value,
+      minRatio: document.getElementById("minRatio").value,
+      keyword: document.getElementById("keywordFilter").value
+    },
+    sortDir,
+    currentSortCol,
+    currentPage,
+    pasteInput: document.getElementById("pasteArea").value
+  };
+  localStorage.setItem("keywordToolSave", JSON.stringify(data));
+}
+
+// LOAD ON START
+window.addEventListener("load", function(){
+  const saved = localStorage.getItem("keywordToolSave");
+  if(!saved) return;
+
+  try{
+    const data = JSON.parse(saved);
+
+    tableData = data.tableData || [];
+    currentData = data.currentData || [];
+
+    document.getElementById("minSearch").value = data.filters?.minSearch || "";
+    document.getElementById("maxResults").value = data.filters?.maxResults || "";
+    document.getElementById("minRatio").value = data.filters?.minRatio || "";
+    document.getElementById("keywordFilter").value = data.filters?.keyword || "";
+
+    sortDir = data.sortDir || {};
+    currentSortCol = data.currentSortCol ?? null;
+    currentPage = data.currentPage || 1;
+
+    document.getElementById("pasteArea").value = data.pasteInput || "";
+
+    if(tableData.length){
+      document.getElementById("tableSection").classList.add("active");
+      updateSortUI();
+      renderTable();
+    }
+
+  }catch(e){}
+});
+
+// SAVE ON CHANGE
+document.addEventListener("input", saveToLocal);
 
 </script>
 </body>
