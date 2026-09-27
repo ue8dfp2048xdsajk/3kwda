@@ -262,6 +262,82 @@ border-radius: 6px;
 border: 2px solid #e0e0e0;
 }
 
+.table-header-actions{
+display: flex;
+align-items: center;
+gap: 12px;
+}
+
+.export-menu{
+position: relative;
+}
+
+.export-table-btn{
+display: inline-flex;
+align-items: center;
+gap: 8px;
+padding: 8px 16px;
+cursor: pointer;
+background: linear-gradient(135deg, #00bfa5 0%, #00897b 100%);
+color: white;
+border: none;
+border-radius: 6px;
+font-size: 14px;
+font-weight: 600;
+font-family: inherit;
+box-shadow: 0 2px 8px rgba(0,191,165,0.3);
+user-select: auto;
+-webkit-user-select: auto;
+}
+
+.export-table-btn:hover{
+background: linear-gradient(135deg, #00897b 0%, #00695c 100%);
+}
+
+.export-table-btn:disabled{
+opacity: 0.7;
+cursor: wait;
+}
+
+.export-chevron{
+font-size: 10px;
+line-height: 1;
+}
+
+.export-menu-list{
+position: absolute;
+top: calc(100% + 6px);
+right: 0;
+min-width: 148px;
+background: white;
+border: 2px solid #e0e0e0;
+border-radius: 8px;
+box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+z-index: 5;
+overflow: hidden;
+padding: 4px;
+}
+
+.export-menu-list button{
+display: block;
+width: 100%;
+text-align: left;
+padding: 10px 12px;
+border: none;
+background: white;
+border-radius: 6px;
+font-family: inherit;
+font-size: 14px;
+font-weight: 600;
+color: #212121;
+cursor: pointer;
+}
+
+.export-menu-list button:hover{
+background: #e0f2f1;
+color: #00695c;
+}
+
 .table-wrapper{
 background: white;
 border-radius: 12px;
@@ -629,6 +705,11 @@ font-size: 12px;
 padding: 6px 12px;
 }
 
+.export-table-btn{
+font-size: 12px;
+padding: 6px 12px;
+}
+
 .table-hint{
 font-size: 12px;
 }
@@ -721,7 +802,19 @@ Very low"></textarea>
 
 <div class="table-header">
 <div class="table-hint">Click any column heading to sort</div>
+<div class="table-header-actions">
+<div class="export-menu">
+<button type="button" id="exportTableBtn" class="export-table-btn" aria-haspopup="true" aria-expanded="false" aria-controls="exportMenuList">
+<span class="export-label">Export Table</span>
+<span class="export-chevron" aria-hidden="true">▼</span>
+</button>
+<div class="export-menu-list" id="exportMenuList" hidden>
+<button type="button" id="exportCsvOption">CSV</button>
+<button type="button" id="exportExcelOption">Excel</button>
+</div>
+</div>
 <div id="resultCount"></div>
+</div>
 </div>
 
 <div class="table-wrapper">
@@ -1146,6 +1239,130 @@ function downloadProgress(){
   a.click();
   URL.revokeObjectURL(url);
 }
+
+function csvCell(value){
+  const text = String(value ?? "")
+  if(/[",\n\r]/.test(text) || /^[=+\-@]/.test(text)){
+    return '"' + text.replace(/"/g, '""') + '"'
+  }
+  return text
+}
+
+const EXPORT_HEADERS = ["keyword","searches","results","conversion rate","search:result"]
+
+function canExport(){
+  const errorDiv = document.getElementById("errorMessage")
+  if(!tableData.length){
+    errorDiv.textContent = "Process some keywords before exporting."
+    errorDiv.classList.add("active")
+    return false
+  }
+  errorDiv.classList.remove("active")
+  return true
+}
+
+function closeExportMenu(){
+  const menu = document.getElementById("exportMenuList")
+  const btn = document.getElementById("exportTableBtn")
+  if(!menu || !btn) return
+  menu.hidden = true
+  btn.setAttribute("aria-expanded","false")
+}
+
+function toggleExportMenu(){
+  const menu = document.getElementById("exportMenuList")
+  const btn = document.getElementById("exportTableBtn")
+  const open = menu.hidden
+  menu.hidden = !open
+  btn.setAttribute("aria-expanded", open ? "true" : "false")
+}
+
+function exportCsv(){
+  if(!canExport()) return
+  closeExportMenu()
+
+  const lines = [EXPORT_HEADERS.join(",")]
+
+  tableData.forEach(row => {
+    lines.push([
+      csvCell(row.keyword),
+      row.searches,
+      row.results,
+      csvCell(row.conversion),
+      row.ratio
+    ].join(","))
+  })
+
+  const blob = new Blob(["\uFEFF" + lines.join("\r\n")], {type:"text/csv;charset=utf-8"})
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement("a")
+  a.href = url
+  a.download = "keywords.csv"
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+let xlsxLoading = null
+
+function loadXlsx(){
+  if(window.XLSX) return Promise.resolve(window.XLSX)
+  if(xlsxLoading) return xlsxLoading
+  xlsxLoading = new Promise((resolve, reject) => {
+    const script = document.createElement("script")
+    script.src = "https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"
+    script.onload = () => window.XLSX ? resolve(window.XLSX) : reject(new Error("XLSX missing"))
+    script.onerror = () => {
+      xlsxLoading = null
+      reject(new Error("XLSX failed to load"))
+    }
+    document.head.appendChild(script)
+  })
+  return xlsxLoading
+}
+
+async function exportExcel(){
+  if(!canExport()) return
+  closeExportMenu()
+
+  const btn = document.getElementById("exportTableBtn")
+  const label = btn.querySelector(".export-label")
+  const previous = label.textContent
+  btn.disabled = true
+  label.textContent = "Preparing…"
+
+  try{
+    const XLSX = await loadXlsx()
+    const rows = [
+      EXPORT_HEADERS,
+      ...tableData.map(row => [row.keyword, row.searches, row.results, row.conversion, row.ratio])
+    ]
+    const sheet = XLSX.utils.aoa_to_sheet(rows)
+    sheet["!cols"] = [{wch:28},{wch:12},{wch:12},{wch:18},{wch:14}]
+    const book = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(book, sheet, "Keywords")
+    XLSX.writeFile(book, "keywords.xlsx")
+  }catch(err){
+    const errorDiv = document.getElementById("errorMessage")
+    errorDiv.textContent = "Unable to create the Excel file. Check your connection and try again."
+    errorDiv.classList.add("active")
+  }finally{
+    label.textContent = previous
+    btn.disabled = false
+  }
+}
+
+document.getElementById("exportTableBtn").addEventListener("click", toggleExportMenu)
+document.getElementById("exportCsvOption").addEventListener("click", exportCsv)
+document.getElementById("exportExcelOption").addEventListener("click", exportExcel)
+
+document.addEventListener("click", function(e){
+  const menu = document.querySelector(".export-menu")
+  if(menu && !menu.contains(e.target)) closeExportMenu()
+})
+
+document.addEventListener("keydown", function(e){
+  if(e.key === "Escape") closeExportMenu()
+})
 
 document.getElementById("uploadJson").addEventListener("change", function(e){
   const file = e.target.files[0];
